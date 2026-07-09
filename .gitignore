@@ -1,0 +1,16 @@
+# ROS2 编译生成目录（本地colcon build自动生成，无需提交）
+build/
+install/
+log/
+
+# Python 缓存文件
+__pycache__/
+*.pyc
+*.pyo
+
+# 编辑器配置
+.vscode/
+.idea/
+
+# Windows系统缓存文件
+Thumbs.db

@@ -5,7 +5,7 @@ FlyHand 是一个面向空中操作（aerial manipulation）的开源实验平�
 项目适合用于空中机器人、视觉伺服、无人机-机械臂协同控制、模仿学习与具身智能等方向的研究和教学。
 
 > **项目状态**：开发中（Research / Prototype）  
-> **仓库**：[`z3z3z3-oho/flyhand`](https://github.com/z3z3z3-oho/flyhand)
+> **仓库**：[`z3z3z3-oho/Flyhand`](https://github.com/z3z3z3-oho/Flyhand)
 
 ## 演示
 

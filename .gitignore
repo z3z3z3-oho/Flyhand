@@ -1,16 +1,71 @@
-# ROS2 编译生成目录（本地colcon build自动生成，无需提交）
+# Python bytecode, environments, tooling and test output
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ROS 2 / colcon generated output
 build/
 install/
 log/
+.ros/
 
-# Python 缓存文件
-__pycache__/
-*.pyc
-*.pyo
+# Node.js / Vite generated output
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
 
-# 编辑器配置
+# Local configuration and runtime data
+.env
+.env.*
+!.env.example
+*.local
+*.log
+*.bag
+*.db3
+*.mcap
+
+# Downloadable model weights and MediaPipe task files
+*.task
+*.onnx
+*.pt
+*.pth
+*.rknn
+*.engine
+
+# Local experiment captures and debug output
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+
+# Local snapshots and manual backup copies
+*.bak
+*.bak_*
+*.before_*
+*~
+*.swp
+*.swo
+
+# IDE and operating system files
 .vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
 .idea/
-
-# Windows系统缓存文件
+*.iml
+.DS_Store
 Thumbs.db
+Desktop.ini
+
+# Legacy generated frontend; the maintained UI is so101-control-ui.
+/ground/web/

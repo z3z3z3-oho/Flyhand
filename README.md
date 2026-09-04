@@ -1,191 +1,197 @@
-# FlyHand：空中多模态抓取平台
+# FlyHand
 
-FlyHand 是一个面向空中操作（aerial manipulation）的开源实验平台：在六旋翼无人机上挂载六自由度 SO101 机械臂，通过视觉、遥操作和程序化控制等多种方式完成目标识别、接近、抓取与释放任务。
+FlyHand 是一个空中多模态抓取平台。在六旋翼无人机上搭载 6 自由度 SO-101 机械臂，系统将目标检测、坐标变换、飞行-机械臂协同任务状态机和地面端多模态控制整合为一套 ROS 2 与 Web 控制系统。
 
-项目适合用于空中机器人、视觉伺服、无人机-机械臂协同控制、模仿学习与具身智能等方向的研究和教学。
+当前版本支持：
 
-> **项目状态**：开发中（Research / Prototype）  
-> **仓库**：[`z3z3z3-oho/Flyhand`](https://github.com/z3z3z3-oho/Flyhand)
+- **自主抓取**：YOLO 目标检测、相机到机械臂坐标变换、视觉伺服与抓取状态机；
+- **主从遥操作**：SO-101 Leader 主臂经数传控制机载 Follower；
+- **手势控制**：MediaPipe 手部/人体关键点识别，将手势映射为末端运动与夹爪指令；
+- **脑电触发**：兼容 ADS1299/OpenBCI 类串口数据源，按阈值发送预设机械臂动作；
+- **地面控制中心**：FastAPI 后端与 React/Vite 前端，提供连接、模式切换、实时遥测和手势预览。
 
-## 演示
+> 项目面向研究和原型验证。无人机与机械臂会造成实际人身和财产风险，请仅在合规、封闭且受控的场地使用。
 
-<!-- 将下方占位链接替换为项目实拍视频或 GIF -->
+![FlyHand 系统总体框架](airborne/系统总体框架.png)
 
-| 场景 | 说明 |
-| --- | --- |
-| 空中悬停抓取 | 六旋翼保持飞行稳定，机械臂完成末端对准和抓取 |
-| 视觉引导抓取 | 由相机/多模态模型提供目标检测、定位或动作指令 |
-| 遥操作 | 操作者通过手柄、键盘或上位机发送飞行与机械臂控制指令 |
-
-演示视频：`待补充`　｜　实验记录：`待补充`
-
-## 系统概览
+## 功能架构
 
 ```text
-┌──────────────────────────────────────────────────────────────┐
-│                         FlyHand                              │
-│                                                              │
-│  任务层：目标/语言指令、任务规划、状态机                     │
-│                 │                                            │
-│  感知层：RGB-D/双目相机、目标检测/跟踪、位姿估计              │
-│                 │                                            │
-│  控制层：飞行控制器（六旋翼） ↔ 机械臂控制器（SO101，6-DoF） │
-│                 │                                            │
-│  执行层：无人机机体、云台/相机、夹爪与负载                   │
-└──────────────────────────────────────────────────────────────┘
+地面端
+  SO-101 Leader / 摄像头 / EEG / Web 控制中心
+                 │ 串口数传（CRC32 帧）
+                 ▼
+机载端 ROS 2
+  serial_command_bridge ──► so101_arm_interface ──► SO-101 Follower
+                 │
+                 ├──► harvest_state_machine ──► 飞控任务接口
+                 │
+相机 ──► yolo_detector ──► coordinate_transform ──► /target/best
 ```
 
-典型任务流程：
+## 代码结构
 
-1. 起飞并进入安全悬停状态；
-2. 感知模块获取目标位置、姿态及环境信息；
-3. 规划模块生成无人机位姿与机械臂关节/末端轨迹；
-4. 执行抓取、搬运和释放；
-5. 返回安全位置并降落。
+```text
+airborne/
+├── airborne/                         # 机载 ROS 2 节点
+│   ├── nodes/
+│   │   ├── yolo_detector.py           # RKNN/YOLO 目标检测
+│   │   └── debug_perception_viewer.py # 感知调试视图
+│   ├── coordinate_transform.py        # 相机、机体和机械臂坐标变换
+│   ├── harvest_state_machine.py       # 搜索、接近、伺服、抓取状态机
+│   ├── serial_command_bridge.py       # 数传协议与 ROS 2 桥接
+│   ├── so101_arm_interface.py         # SO-101 Follower 与逆运动学接口
+│   ├── sts3215_driver.py              # STS3215 舵机驱动
+│   ├── unified_radio_bridge.py        # 统一无线控制桥
+│   ├── config/drone_follower.json     # 舵机 ID、零位和限位配置
+│   └── launch/harvest_system.launch.py
+└── ground/                            # 地面控制端
+    ├── ground_so101_sender.py         # 主从、手势与脑电统一发送端
+    ├── ground_so101_ui.py             # Tkinter 本地控制界面
+    ├── eeg_peak_arm_sender.py         # EEG 阈值触发器
+    ├── gesture_preview_only.py        # 不下发指令的手势预览
+    ├── web_server.py                  # FastAPI 控制后端
+    ├── requirements.txt
+    └── so101-control-ui/              # React/Vite Web 控制中心
+```
 
-## 主要特性
+## 硬件与软件前提
 
-- **空中平台**：六旋翼无人机，适合在悬停状态下进行近距离操作。
-- **操作机构**：六自由度 SO101 机械臂，可扩展夹爪、力/扭矩传感器等末端执行器。
-- **多模态输入**：支持相机图像/深度、语言或高层任务指令、遥操作输入，以及脚本/API 控制。
-- **协同控制**：同时考虑无人机机体运动、机械臂运动、末端抓取约束和安全边界。
-- **研究友好**：模块化组织感知、规划、控制和日志，便于替换算法与复现实验。
+### 硬件
 
-## 硬件组成
+- 六旋翼飞行平台、飞控与数传链路；
+- 6 自由度 SO-101 Follower 机械臂，使用 STS3215 系列舵机；
+- 可选 SO-101 Leader 主臂，用于主从遥操作；
+- 机载相机和运行 ROS 2 的机载计算机；
+- 可选 USB 摄像头和 ADS1299/OpenBCI 兼容 EEG 串口设备。
 
-| 子系统 | 当前方案 | 备注 |
-| --- | --- | --- |
-| 飞行平台 | 六旋翼无人机 | 机架、电机、电调和电池规格请按实际装机填写 |
-| 飞控 | `待补充` | 例如 PX4/ArduPilot；需提供外部控制接口 |
-| 机械臂 | SO101，6 自由度 | 记录舵机版本、额定负载和安装方式 |
-| 末端执行器 | 夹爪（默认） | 可替换吸盘或其他工具 |
-| 机载计算机 | `待补充` | 运行感知、规划与通信节点 |
-| 传感器 | RGB/RGB-D/双目相机（按配置） | 用于目标检测、深度和位姿估计 |
-| 遥操作设备 | 手柄/键盘/上位机（按配置） | 用于人工示教或安全接管 |
+### 软件
 
-### 载荷与安全检查
-
-安装前请确认：
-
-- 机械臂、相机、线缆和电池总质量不超过机体可用载荷；
-- 重心位于允许范围，桨叶和机械臂工作空间无干涉；
-- 失联、低电量、过流、舵机异常和紧急停机策略可用；
-- 首次调试使用拆桨/系留/仿真模式，确认关节限位后再进行飞行测试。
-
-## 软件环境
-
-以下为推荐环境；请以仓库中的依赖文件和启动脚本为准。
-
-- Ubuntu 20.04/22.04（推荐）
-- Python 3.9+
-- ROS 2 Humble（如项目使用 ROS 2）
-- 飞控通信链路：MAVLink/MAVROS 或项目实际采用的接口
-- SO101 驱动与串口/USB 权限配置
-- 可选：CUDA、PyTorch、OpenCV、深度相机 SDK
+- 地面端：Python 3.10+、Node.js 20.19+（或 22.12+）、npm；
+- 地面 Python 依赖：`pyserial`、NumPy、OpenCV、MediaPipe、FastAPI、Uvicorn，见 [`ground/requirements.txt`](ground/requirements.txt)；
+- 主从遥操作还需要 [LeRobot](https://github.com/huggingface/lerobot) 的 SO-101 Leader 支持；
+- 机载端：ROS 2、`v4l2_camera`、`cv_bridge`、RKNN Lite 与项目所需的飞控通信节点；
+- 自动模式还需要 `placo`、SciPy、目标检测模型、SO-101 URDF 以及手眼标定文件。
 
 ## 安装
 
-```bash
-git clone https://github.com/z3z3z3-oho/flyhand.git
-cd flyhand
+### 地面控制端
 
-# 按仓库实际文件选择其一
-python3 -m venv .venv
+```bash
+cd ground
+python -m venv .venv
+# Linux/macOS
 source .venv/bin/activate
-pip install -r requirements.txt
+# Windows PowerShell: .\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
-如果项目包含 ROS 2 工作空间：
+构建 Web 控制中心：
 
 ```bash
-source /opt/ros/humble/setup.bash
-rosdep install --from-paths src --ignore-src -r -y
+cd so101-control-ui
+npm ci
+npm run build
+```
+
+`web_server.py` 会优先托管 `so101-control-ui/dist/`。构建目录不会提交到仓库，首次部署需要执行一次 `npm run build`。
+
+### 机载 ROS 2 端
+
+将 `airborne/` 中的节点安装到实际 ROS 2 包（当前启动文件包名为 `pine_harvester`）后，在目标设备上构建：
+
+```bash
+source /opt/ros/<distro>/setup.bash
+cd <your_ros2_workspace>
 colcon build --symlink-install
 source install/setup.bash
 ```
 
-> 若仓库实际使用 Conda、Docker 或其他 ROS 发行版，请优先遵循对应目录中的安装说明。
+启动文件中的设备路径、相机标定、URDF 路径和串口均为实验机参数，首次运行前必须改为本机实际值。参见 [`airborne/launch/harvest_system.launch.py`](airborne/launch/harvest_system.launch.py)。
 
-## 快速开始
+## 快速验证
 
-建议按“仿真 → 台架 → 系留 → 自由飞行”的顺序验证。
-
-### 1. 仿真/无桨模式
+### 协议自检
 
 ```bash
-# 示例命令，请替换为仓库中的实际入口
-python scripts/teleop_arm.py --config configs/so101.yaml
-python scripts/run_pick.py --mode simulation --target demo
+cd ground
+python ground_so101_sender.py --self-test
 ```
 
-### 2. 连接硬件
+### 手势预览
 
-1. 上电前检查急停、桨叶状态和机械臂初始姿态；
-2. 连接飞控、机载计算机、SO101 控制器和相机；
-3. 在配置文件中填写串口、网络地址、相机标定和关节限位；
-4. 先单独测试机械臂，再测试飞控外部控制，最后启用协同控制。
+该模式只显示手部/人体关键点，不连接主臂、数传或机械臂：
 
 ```bash
-# 示例命令，请替换为仓库中的实际入口
-python scripts/calibrate_camera.py --config configs/camera.yaml
-python scripts/bringup.py --config configs/flyhand.yaml
-python scripts/run_pick.py --mode hardware --target <object>
+python gesture_preview_only.py
 ```
 
-### 3. 控制方式
+### Web 控制中心
 
-- **手动/遥操作**：操作者直接控制无人机速度、机械臂关节或末端位姿，适合调试和示教；
-- **视觉伺服**：根据实时目标位置闭环修正无人机和机械臂动作；
-- **程序化控制**：通过脚本、ROS topic/service 或 API 执行预定义动作；
-- **多模态/高层指令**：将图像、语言和任务状态转换为抓取策略（具体模型与接口以仓库实现为准）。
+```bash
+cd so101-control-ui
+npm ci
+npm run build
+cd ..
+python web_server.py --no-browser
+```
 
-## 配置建议
+打开 `http://127.0.0.1:8765`。默认仅监听本机回环地址；如需局域网访问，请显式传入 `--host` 并评估现场控制权限与网络安全。
 
-将以下参数集中在 YAML/JSON 配置中，避免在代码中硬编码：
+### 主从或手势控制
 
-- 飞控连接（串口或 UDP）、系统 ID 与模式；
-- SO101 各关节零位、方向、速度、加速度和限位；
-- 机体坐标系、机械臂基座坐标系、相机外参；
-- 目标类别、抓取姿态、接近距离与释放高度；
-- 控制频率、超时、碰撞阈值、低电量和失联保护参数。
+确认机械臂已抬离障碍物、急停可用且关节限位已校准后再打开数传：
 
-## 数据记录与复现
+```bash
+# 手势控制：不连接 Leader 主臂
+python ground_so101_sender.py --gesture-only --radio-port <COM_PORT>
 
-每次实验建议记录：
+# 主从遥操作
+python ground_so101_sender.py --leader-port <LEADER_PORT> --radio-port <RADIO_PORT>
+```
 
-- 时间戳、飞行状态、电池电压和控制模式；
-- 机体位姿/速度、机械臂关节状态、末端位姿；
-- 相机图像/深度、目标检测结果和规划轨迹；
-- 抓取成功率、定位误差、耗时和异常原因。
+串口波特率默认 `57600`，可用 `--baudrate` 覆盖。
 
-请在发布数据时去除敏感信息，并注明硬件、固件、参数和随机种子，便于复现。
+### 自主抓取链路
 
-## 故障排查
+在机载端完成相机、目标模型、URDF、手眼标定和飞控接口配置后：
 
-| 现象 | 可能原因 | 建议 |
+```bash
+ros2 launch pine_harvester harvest_system.launch.py
+```
+
+建议先用 `perception_only:=true` 验证相机、YOLO 与坐标变换，再在拆桨或系留条件下启用机械臂和任务状态机。
+
+## 控制模式
+
+| 模式 | 用途 | 说明 |
 | --- | --- | --- |
-| 机械臂无响应 | 串口权限、供电或舵机 ID 错误 | 检查设备节点、独立供电和限位配置 |
-| 飞控拒绝外部控制 | 模式/解锁条件不满足、链路异常 | 检查飞控日志、心跳和 failsafe 参数 |
-| 末端定位偏差大 | 相机标定或坐标变换错误 | 重新标定内外参，确认 TF/坐标系方向 |
-| 飞行姿态明显变化 | 载荷重心或控制参数变化 | 重新配平，逐步增加机械臂动作幅度 |
-| 抓取不稳定 | 目标跟踪抖动、接近速度过快 | 降低速度，增加滤波和抓取前稳定时间 |
+| `AUTO` | 自主抓取 | 目标检测、坐标变换与抓取状态机协同运行 |
+| `TELEOP` | 主从遥操作 | Leader 主臂角度映射到 Follower |
+| `GESTURE` | 手势控制 | MediaPipe 关键点生成末端/夹爪控制量 |
+| `EEG` | 脑电触发 | 阈值检测发送预设动作与夹爪指令 |
+| `HOLD` | 保持 | 停止动态运动并保持当前状态 |
+| `STOW` | 收臂 | 回到预设安全姿态 |
 
-## 安全声明
+## 配置与部署注意事项
 
-本项目涉及无人机飞行和机械臂运动，仅可由具备相应资质和经验的人员在合法、封闭、可控的环境中测试。请遵守当地航空法规和场地管理要求。开发者不对因硬件装配、参数设置、飞行操作或二次修改造成的损失承担责任。
+- [`airborne/config/drone_follower.json`](airborne/config/drone_follower.json) 包含舵机 ID、零位偏移和关节范围。更换机械臂或重新标定后必须更新；
+- ROS 2 启动文件含 `/dev/video20`、`/dev/ttyUSB0`、`/dev/ttyACM0` 和绝对路径示例，部署时务必替换；
+- `.task`、`.onnx`、`.pt`、`.rknn` 等模型不会被 Git 跟踪，请通过受控模型存储或 Release 分发并校验版本；
+- 前端依赖由 `package-lock.json` 锁定，使用 `npm ci` 安装；
+- 本地调试备份（`*.bak_*`、`*.before_*`）、`node_modules`、`dist`、ROS 构建目录与视频不提交。
 
-## 开源协议
+## 安全须知
 
-当前协议：`待补充`。如仓库尚未附带许可证，建议在发布前加入 LICENSE，并明确硬件设计、软件代码、模型和数据的授权范围。
+1. 首次调试必须拆桨或断开推进系统，仅测试机械臂与通信链路；
+2. 自由飞行前依次完成台架、系留、低速悬停和空载动作验证；
+3. 每次起飞前检查重心、紧固件、桨叶与机械臂工作空间，确认无干涉；
+4. 确认飞控失联保护、低电量保护、急停和 `HOLD`/`STOW` 指令有效；
+5. 不得在人员、车辆、公共区域或不具备许可的空域上方测试。
 
-## 贡献
+## 开源与贡献
 
-欢迎提交 Issue、改进建议和 Pull Request。提交前请说明：
+仓库尚未声明许可证。发布、分发或二次开发前，请由项目维护者补充 `LICENSE` 并确认 SO-101、LeRobot、MediaPipe、ROS 2、RKNN 等上游组件的许可要求。
 
-- 使用的硬件与软件版本；
-- 复现步骤、日志和最小示例；
-- 对飞行安全、机械限位和数据隐私的影响。
-
-## 致谢
-
-感谢开源飞控、机器人中间件、视觉算法和 SO101 社区项目的贡献。相关组件请按照各自许可证使用。
+提交 Issue 或 Pull Request 时，请说明硬件版本、ROS/固件版本、复现步骤，以及对飞行和机械臂安全的影响。
